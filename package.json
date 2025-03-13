@@ -1,12 +1,15 @@
 {
   "name": "nodejs-app",
   "version": "1.0.0",
-  "description": "A minimal Node.js web application.",
+  "description": "A Node.js script to answer post and comments from Reddit's user",
   "main": "app.js",
-  "author": "alphasec",
+  "author": "Carlos",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.19.2"
+    "dotenv": "^16.4.7",
+    "express": "^4.19.2",
+    "node-fetch": "^2.6.7",
+    "snoowrap": "^1.15.2"
   },
   "scripts": {
     "start": "node app.js"
