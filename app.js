@@ -1,388 +1,218 @@
+// post_commenter.js
 require("dotenv").config();
-console.log("CLIENT_ID:", process.env.REDDIT_CLIENT_ID);
-console.log("CLIENT_SECRET:", process.env.REDDIT_CLIENT_SECRET);
-console.log("USERNAME:", process.env.REDDIT_USERNAME);
-console.log("PASSWORD:", process.env.REDDIT_PASSWORD);
-console.log("USER_AGENT:", process.env.REDDIT_USER_AGENT);
-console.log("WEBHOOK_URL:", process.env.N8N_WEBHOOK_URL);
 
 const Snoowrap = require("snoowrap");
 const fetch = require("node-fetch");
 const cron = require("node-cron");
 
-// Configure Reddit API credentials
-let reddit; // Declare reddit outside the try block
+// Variáveis de ambiente (carregadas do .env file)
+const redditClientId = process.env.REDDIT_CLIENT_ID;
+const redditClientSecret = process.env.REDDIT_CLIENT_SECRET;
+const redditUsername = process.env.REDDIT_USERNAME;
+const redditPassword = process.env.REDDIT_PASSWORD;
+const redditUserAgent = process.env.REDDIT_USER_AGENT;
+const postWebhookUrl = process.env.POST_WEBHOOK_URL; // Webhook específico para posts
+
+// Configuração da API do Reddit usando Snoowrap
+let reddit;
 try {
-  console.log("Authenticating with Reddit API...");
-  reddit = new Snoowrap({
-    userAgent: process.env.REDDIT_USER_AGENT,
-    clientId: process.env.REDDIT_CLIENT_ID,
-    clientSecret: process.env.REDDIT_CLIENT_SECRET,
-    username: process.env.REDDIT_USERNAME,
-    password: process.env.REDDIT_PASSWORD,
-  });
-  console.log("Successfully authenticated with Reddit API.");
+    console.log("Post Commenter Script Iniciado");
+    console.log("Autenticando com Reddit API...");
+    reddit = new Snoowrap({
+        userAgent: redditUserAgent,
+        clientId: redditClientId,
+        clientSecret: redditClientSecret,
+        username: redditUsername,
+        password: redditPassword,
+    });
+    console.log("Autenticado com sucesso no Reddit API.");
 } catch (authError) {
-  console.error("Error authenticating with Reddit API:", authError);
-  // It's crucial to stop the app if authentication fails
-  process.exit(1); // Exit the process with an error code
+    console.error("Erro ao autenticar com Reddit API:", authError);
+    process.exit(1); // Encerra o script se a autenticação falhar
 }
 
-// Your n8n webhook URL
-const webhookUrl = process.env.N8N_WEBHOOK_URL;
-
-// Subreddits to monitor
+// Lista de subreddits a serem monitorados
 const subredditsToMonitor = [
-  "solar",
-  "solarenergy",
-  "solarDy",
-  "energy",
-  "renewableenergy",
-  "teslasolar",
-  "futurology",
-  "solarpower",
-  "environment",
-  "diysolar",
-  "renawable",
-  "science",
-  "teslamortors",
-  "powerwall",
-  "climate",
-  "energystorage",
-  "enphase",
-  "green",
-  "solarcity",
-  "photovoltaics",
-  "eletricvehicles",
-  "sustainability",
-  "teslamotors",
-  "teslamodel3",
-  "teslamodely",
-  "selfdrivingcars",
-  "teslamodels",
-  "teslamodelx",
-  "modely",
-  "rivian",
-  "electriccars",
+    "solar", "solarenergy", "solarDy", "energy", "renewableenergy", "teslasolar",
+    "futurology", "solarpower", "environment", "diysolar", "renawable", "science",
+    "teslamortors", "powerwall", "climate", "energystorage", "enphase", "green",
+    "solarcity", "photovoltaics", "eletricvehicles", "sustainability", "teslamotors",
+    "teslamodel3", "teslamodely", "selfdrivingcars", "teslamodels", "teslamodelx",
+    "modely", "rivian", "electriccars"
 ];
 
-// Keywords to filter for (título, corpo e flair)
+// Keywords para filtrar posts (título, corpo e flair)
 const keywordsToFilter = ["solar quote", "solar quotes"];
 
-// Track processed items to avoid duplicates
-const processedItems = new Set();
+// Variável para armazenar o tempo da última execução do monitoramento
+let lastRunTimePosts = null; // Variável específica para o script de posts
 
-// Variáveis para guardar os IDs dos intervalos de monitoramento (para parar depois de 1 hora)
-let postMonitoringIntervalId = null;
-let commentMonitoringIntervalId = null;
+// Função para configurar o agendamento diário usando cron
+function setupDailySchedulePosts() { // Função de agendamento específica para posts
+    console.log("Configurando agendamento diário para Post Commenter...");
+    const timezone = "America/Los_Angeles";
+    const runDuration = 60 * 60 * 1000; // 60 minutos
+    const scheduleTimes = ["0 9 * * *", "0 13 * * *", "0 20 * * *"]; // Horários agendados
+    const intervalTime = 5 * 60 * 1000; // Intervalo de 5 minutos
 
-// Function to monitor new posts (RETORNA INTERVAL ID E USA SETINTERVAL)
-async function monitorPosts() {
-  console.log("Starting post monitoring interval...");
-  let intervalId = null; // Define intervalId outside the try block
-  try {
-    intervalId = setInterval(async () => {
-      console.log(
-        `Checking for new posts in subreddits: ${subredditsToMonitor.join(
-          ", "
-        )}...`
-      );
-      try {
-        for (const subreddit of subredditsToMonitor) {
-          const newPosts = await reddit
-            .getSubreddit(subreddit)
-            .getNew({ limit: 25 });
+    scheduleTimes.forEach((time) => {
+        cron.schedule(
+            time,
+            async () => {
+                const logTime = time.split(" ")[1];
+                console.log(`Post Commenter: Executando tarefa agendada às ${logTime}h por 60 minutos...`);
 
-          for (const post of newPosts) {
-            if (processedItems.has(post.id)) continue;
+                const endTime = Date.now() + runDuration;
+                console.log(`Post Commenter: Tempo de término calculado: ${new Date(endTime)}`);
 
-            const postTitleLower = post.title.toLowerCase();
-            const postContentLower = post.selftext
-              ? post.selftext.toLowerCase()
-              : "";
-            const postFlairLower = post.link_flair_text
-              ? post.link_flair_text.toLowerCase()
-              : "";
-            const containsKeywords = keywordsToFilter.some((keyword) => {
-              return (
-                postTitleLower.includes(keyword) ||
-                postContentLower.includes(keyword) ||
-                postFlairLower.includes(keyword)
-              );
-            });
+                async function runInterval() {
+                    if (Date.now() > endTime) {
+                        console.log("Post Commenter: Tempo limite atingido. Cancelando intervalo.");
+                        return;
+                    }
+                    try {
+                        await monitorRedditPosts(endTime); // Chama função específica para monitorar posts
+                    } catch (error) {
+                        console.error("Post Commenter: Erro durante monitoramento e envio:", error);
+                    }
+                }
 
-            if (!containsKeywords) {
-              console.log(
-                `New post found: "${post.title}" - Does not contain keywords (title, body, or flair), ignoring.`
-              );
-              continue;
+                await runInterval();
+                const intervalId = setInterval(async () => {
+                    await runInterval();
+                    if (Date.now() > endTime) {
+                        clearInterval(intervalId);
+                        console.log("Post Commenter: Intervalo cancelado devido ao tempo limite.");
+                    }
+                }, intervalTime);
+            },
+            {
+                scheduled: true,
+                timezone: timezone,
             }
+        );
+    });
+    console.log("Post Commenter: Agendamento diário configurado.");
+}
 
-            processedItems.add(post.id);
-            console.log(
-              `New post found with keywords (including flair check): ${post.title}`
-            );
+// Função principal para monitorar posts no Reddit (ESPECÍFICA PARA POSTS)
+async function monitorRedditPosts(endTime) {
+    console.log("Post Commenter: Iniciando monitoramento de posts...");
+    const allPosts = [];
+    let postCount = 0;
+    const processedItems = new Set();
+    const now = Date.now();
+
+    try {
+        for (const subreddit of subredditsToMonitor) {
+            if (Date.now() > endTime) {
+                console.log(`Post Commenter: Tempo limite atingido durante subreddits. Saindo. (${subreddit})`);
+                break;
+            }
+            console.log(`Post Commenter: Verificando subreddit: ${subreddit}`);
 
             try {
-              await sendToWebhook({
-                type: "post",
-                id: post.id,
-                title: post.title,
-                content: post.selftext,
-                author: post.author.name,
-                subreddit: post.subreddit_name_prefixed.replace("r/", ""),
-                url: post.url,
-                permalink: `https://reddit.com${post.permalink}`,
-                flair: post.link_flair_text || null,
-              });
-            } catch (webhookError) {
-              console.error(
-                "Error sending to webhook for post:",
-                post.id,
-                webhookError
-              );
+                const newPosts = await reddit.getSubreddit(subreddit).getNew({ limit: 100 });
+
+                for (const post of newPosts) {
+                    if (Date.now() > endTime) {
+                        console.log(`Post Commenter: Tempo limite atingido durante posts. Saindo. (${subreddit}, ${post.id})`);
+                        break;
+                    }
+                    if (processedItems.has(post.id)) {
+                        console.log(`Post Commenter: Post já processado nesta execução: ${post.id}, ignorando.`);
+                        continue;
+                    }
+
+                    const createdTimestamp = post.created_utc * 1000;
+                    if (lastRunTimePosts !== null && (createdTimestamp <= lastRunTimePosts || createdTimestamp > now)) {
+                        console.log(`Post Commenter: Post "${post.title}" fora da janela de tempo (${new Date(createdTimestamp)}), ignorando.`);
+                        continue;
+                    }
+
+                    const postTitleLower = post.title.toLowerCase();
+                    const postContentLower = post.selftext ? post.selftext.toLowerCase() : "";
+                    const postFlairLower = post.link_flair_text ? post.link_flair_text.toLowerCase() : "";
+                    const containsKeywords = keywordsToFilter.some(keyword =>
+                        postTitleLower.includes(keyword) || postContentLower.includes(keyword) || postFlairLower.includes(keyword)
+                    );
+
+                    if (!containsKeywords) {
+                        console.log(`Post Commenter: Novo post: "${post.title}" - Sem keywords, ignorando.`);
+                        continue;
+                    }
+
+                    processedItems.add(post.id);
+                    console.log(`Post Commenter: Novo post com keywords: ${post.title}`);
+                    postCount++;
+
+                    allPosts.push({
+                        type: "post",
+                        id: post.id,
+                        title: post.title,
+                        content: post.selftext,
+                        author: post.author.name,
+                        subreddit: post.subreddit_name_prefixed.replace("r/", ""),
+                        url: post.url,
+                        permalink: `https://reddit.com${post.permalink}`,
+                        flair: post.link_flair_text || null,
+                    });
+                }
+            } catch (subredditError) {
+                console.error(`Post Commenter: Erro ao iterar subreddit ${subreddit}:`, subredditError);
             }
-          }
         }
-      } catch (subredditError) {
-        console.error("Error iterating subreddits:", subredditError);
-      }
-    }, 300000); // Executa a cada 5 minutos (300000ms)
-    console.log("Post monitoring interval started.");
-  } catch (overallError) {
-    console.error("Overall error in monitorPosts:", overallError);
-  }
-  return intervalId; // Retorna o ID do intervalo (ADICIONADO)
-}
 
-// Function to monitor comments on your posts (RETORNA INTERVAL ID E USA SETINTERVAL)
-async function monitorComments() {
-  console.log("Starting comment monitoring interval...");
-  let intervalId = null;
-  try {
-    intervalId = setInterval(async () => {
-      console.log("Checking for new comments on your posts...");
-      try {
-        // Get your username
-        const myUsername = await reddit.getMe().name;
-
-        // Get your recent submissions
-        const myPosts = await reddit
-          .getUser(myUsername)
-          .getSubmissions({ limit: 10 });
-
-        for (const post of myPosts) {
-          // Expand comments for this post
-          const comments = await post.expandReplies({ limit: 25, depth: 1 });
-
-          if (comments && comments.comments) {
-            for (const comment of comments.comments) {
-              // Skip if already processed or if it's your own comment
-              if (
-                processedItems.has(comment.id) ||
-                comment.author.name === myUsername
-              )
-                continue;
-
-              // Mark as processed
-              processedItems.add(comment.id);
-
-              console.log(`New comment found on your post: ${post.title}`);
-
-              // Send to n8n webhook
-              try {
-                await sendToWebhook({
-                  type: "comment",
-                  id: comment.id,
-                  content: comment.body,
-                  author: comment.author.name,
-                  postId: post.id,
-                  postTitle: post.title,
-                  subreddit: post.subreddit_name_prefixed.replace("r/", ""),
-                  permalink: `https://reddit.com${comment.permalink}`,
-                });
-              } catch (webhookError) {
-                console.error(
-                  "Error sending to webhook for comment:",
-                  comment.id,
-                  webhookError
-                );
-              }
-            }
-          }
+        if (allPosts.length > 0) {
+            console.log(`Post Commenter: Enviando ${allPosts.length} posts para o webhook...`);
+            await sendPostsToWebhook(allPosts);
+        } else {
+            console.log("Post Commenter: Nenhum post novo encontrado.");
         }
-      } catch (commentsError) {
-        console.error("Error getting comments:", commentsError);
-      }
-    }, 300000); // Executa a cada 5 minutos (300000ms)
-    console.log("Comment monitoring interval started.");
-  } catch (overallError) {
-    console.error("Overall error in monitorComments:", overallError);
-  }
-  return intervalId; // Retorna o ID do intervalo (ADICIONADO)
-}
-
-// Função para parar o monitoramento (CÓPIA DO CÓDIGO MAIS RECENTE)
-function stopMonitoring() {
-  console.log("Stopping monitoring after 60 minutes...");
-  if (postMonitoringIntervalId) {
-    clearInterval(postMonitoringIntervalId);
-    postMonitoringIntervalId = null;
-    console.log("Post monitoring stopped.");
-  }
-  if (commentMonitoringIntervalId) {
-    clearInterval(commentMonitoringIntervalId);
-    commentMonitoringIntervalId = null;
-    console.log("Comment monitoring stopped.");
-  }
-  console.log("Monitoring stopped for this scheduled run.");
-}
-
-async function sendToWebhook(data) {
-  try {
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(data),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    } catch (overallError) {
+        console.error("Post Commenter: Erro geral no monitoramento de posts:", overallError);
     }
+    console.log(`Post Commenter: Monitoramento de posts concluído. Posts processados: ${postCount}`);
+    lastRunTimePosts = now; // Atualiza variável de tempo específica para posts
+    console.log(`Post Commenter: Tempo da última execução atualizado para: ${new Date(lastRunTimePosts)}`);
+}
 
-    const responseData = await response.json();
+// Função para enviar array de posts para o webhook (ESPECÍFICA PARA POSTS)
+async function sendPostsToWebhook(data) {
+    if (data.length === 0) {
+        console.log("Post Commenter: Nenhum post para enviar para o webhook.");
+        return;
+    }
+    try {
+        console.log("Post Commenter: Enviando dados para o webhook de posts...");
+        const response = await fetch(postWebhookUrl, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(data),
+        });
 
-    // If n8n returns a response to post as a comment
-    if (responseData.resposta) {
-      try {
-        if (data.type === "post") {
-          // Reply to post
-          await reddit.getSubmission(data.id).reply(responseData.resposta);
-          console.log(`Replied to post ${data.id}`);
-        } else if (data.type === "comment") {
-          // Reply to comment
-          await reddit.getComment(data.id).reply(responseData.resposta);
-          console.log(`Replied to comment ${data.id}`);
+        if (!response.ok) {
+            console.error(`Post Commenter: Erro HTTP ao enviar posts para o webhook! Status: ${response.status}`);
+            throw new Error(`Post Commenter: Erro HTTP! status: ${response.status}`);
         }
-      } catch (replyError) {
-        console.error("Error replying to Reddit:", replyError);
-      }
+        console.log("Post Commenter: Dados de posts enviados com sucesso para o webhook.");
+
+    } catch (error) {
+        console.error("Post Commenter: Erro ao enviar posts para webhook:", error);
     }
-  } catch (error) {
-    console.error("Error sending to webhook:", error);
-  }
-}
-// Limit the size of processedItems to prevent memory issues
-function cleanupProcessedItems() {
-  if (processedItems.size > 1000) {
-    const itemsArray = Array.from(processedItems);
-    const itemsToKeep = itemsArray.slice(itemsArray.length - 500);
-    processedItems.clear();
-    itemsToKeep.forEach((item) => processedItems.add(item));
-  }
 }
 
-// Função para configurar o agendamento diário
-function setupDailySchedule() {
-  console.log("Setting up daily schedule with 60-minute runs...");
 
-  const timezone = "America/Los_Angeles"; // Define a timezone
-
-  // Agendar para rodar às 9h da manhã (horário do servidor)
-  cron.schedule(
-    "0 9 * * *",
-    async () => {
-      console.log("Running scheduled job at 9am for 60 minutes...");
-      // Iniciar o monitoramento e guardar os IDs dos intervalos
-      try {
-        postMonitoringIntervalId = await monitorPosts();
-        commentMonitoringIntervalId = await monitorComments();
-
-        // Agendar para parar o monitoramento após 60 minutos (3600000 milissegundos)
-        setTimeout(stopMonitoring, 3600000);
-
-        console.log("Scheduled job at 9am started, will run for 60 minutes.");
-      } catch (scheduleError) {
-        console.error("Error during 9am scheduled job:", scheduleError);
-      }
-    },
-    {
-      scheduled: true,
-      timezone: timezone,
-    }
-  );
-
-  // Agendar para rodar às 13h (1 da tarde) (horário do servidor)
-  cron.schedule(
-    "0 13 * * *",
-    async () => {
-      console.log("Running scheduled job at 1pm for 60 minutes...");
-      // Iniciar o monitoramento e guardar os IDs dos intervalos
-      try {
-        postMonitoringIntervalId = await monitorPosts();
-        commentMonitoringIntervalId = await monitorComments();
-
-        // Agendar para parar o monitoramento após 60 minutos
-        setTimeout(stopMonitoring, 3600000);
-
-        console.log("Scheduled job at 1pm started, will run for 60 minutes.");
-      } catch (scheduleError) {
-        console.error("Error during 1pm scheduled job:", scheduleError);
-      }
-    },
-    {
-      scheduled: true,
-      timezone: timezone,
-    }
-  );
-
-  // Agendar para rodar às 20h (8 da noite) (horário do servidor)
-  cron.schedule(
-    "0 20 * * *",
-    async () => {
-      console.log("Running scheduled job at 8pm for 60 minutes...");
-      // Iniciar o monitoramento e guardar os IDs dos intervalos
-      try {
-        postMonitoringIntervalId = await monitorPosts();
-        commentMonitoringIntervalId = await monitorComments();
-
-        // Agendar para parar o monitoramento após 60 minutos
-        setTimeout(stopMonitoring, 3600000);
-
-        console.log("Scheduled job at 8pm started, will run for 60 minutes.");
-      } catch (scheduleError) {
-        console.error("Error during 8pm scheduled job:", scheduleError);
-      }
-    },
-    {
-      scheduled: true,
-      timezone: timezone,
-    }
-  );
-
-  console.log("Daily schedule setup with 60-minute runs complete.");
+// Função principal para iniciar o serviço de monitoramento de posts
+async function startMonitoringPosts() { // Função de inicialização específica para posts
+    console.log("Post Commenter: Serviço de monitoramento de posts iniciado...");
+    setupDailySchedulePosts(); // Configura o agendamento diário para posts
+    console.log("Post Commenter: Heartbeat: App está rodando em:", new Date());
 }
 
-// Função para iniciar o monitoramento
-async function startMonitoring() {
-  console.log("Monitoring service started...");
-
-  // Configurar o agendamento diário
-  setupDailySchedule();
-
-  console.log(
-    "Monitoring will run at scheduled times (9am, 1pm, 8pm) daily for 60 minutes each."
-  );
-
-  // Add a heartbeat log
-  setInterval(() => {
-    console.log("Heartbeat: App is still running at:", new Date());
-  }, 5 * 60 * 1000); // Every 5 minutes
-}
-
-// Start the monitoring process
-startMonitoring().catch((error) => {
-  console.error("Error starting monitoring:", error);
+// Inicia o monitoramento de posts e trata quaisquer erros no início
+startMonitoringPosts().catch((error) => {
+    console.error("Post Commenter: Erro ao iniciar o monitoramento de posts:", error);
 });
