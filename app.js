@@ -288,7 +288,7 @@ function cleanupProcessedItems() {
 function setupDailySchedule() {
   console.log("Setting up daily schedule with 60-minute runs...");
 
-  const timezone = "America/Sao_Paulo"; // Define a timezone
+  const timezone = "America/Los_Angeles"; // Define a timezone
 
   // Agendar para rodar às 9h da manhã (horário do servidor)
   cron.schedule(
