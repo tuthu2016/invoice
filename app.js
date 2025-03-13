@@ -8,7 +8,7 @@ console.log("WEBHOOK_URL:", process.env.N8N_WEBHOOK_URL);
 
 const Snoowrap = require("snoowrap");
 const fetch = require("node-fetch");
-const cron = require("node-cron"); // Importa a biblioteca node-cron (ADICIONADO)
+const cron = require("node-cron");
 
 // Configure Reddit API credentials
 const reddit = new Snoowrap({
@@ -22,7 +22,7 @@ const reddit = new Snoowrap({
 // Your n8n webhook URL
 const webhookUrl = process.env.N8N_WEBHOOK_URL;
 
-// Subreddits to monitor (MANTIDO DO SEU CÓDIGO - LISTA DE SUBREDDITS EXPANDIDA)
+// Subreddits to monitor
 const subredditsToMonitor = [
   "solar",
   "solarenergy",
@@ -57,17 +57,17 @@ const subredditsToMonitor = [
   "electriccars",
 ];
 
-// Keywords to filter for (título, corpo e flair) (MANTIDO DO SEU CÓDIGO)
+// Keywords to filter for (título, corpo e flair)
 const keywordsToFilter = ["solar quote", "solar quotes"];
 
-// Track processed items to avoid duplicates (MANTIDO DO SEU CÓDIGO)
+// Track processed items to avoid duplicates
 const processedItems = new Set();
 
-// Variáveis para guardar os IDs dos intervalos de monitoramento (para parar depois de 1 hora) (ADICIONADO)
+// Variáveis para guardar os IDs dos intervalos de monitoramento (para parar depois de 1 hora)
 let postMonitoringIntervalId = null;
 let commentMonitoringIntervalId = null;
 
-// Function to monitor new posts (MODIFICADO - RETORNA INTERVAL ID E USA SETINTERVAL)
+// Function to monitor new posts (RETORNA INTERVAL ID E USA SETINTERVAL)
 async function monitorPosts() {
   console.log("Starting post monitoring interval...");
   const intervalId = setInterval(async () => {
@@ -133,7 +133,7 @@ async function monitorPosts() {
   return intervalId; // Retorna o ID do intervalo (ADICIONADO)
 }
 
-// Function to monitor comments on your posts (MODIFICADO - RETORNA INTERVAL ID E USA SETINTERVAL)
+// Function to monitor comments on your posts (RETORNA INTERVAL ID E USA SETINTERVAL)
 async function monitorComments() {
   console.log("Starting comment monitoring interval...");
   const intervalId = setInterval(async () => {
@@ -187,7 +187,7 @@ async function monitorComments() {
   return intervalId; // Retorna o ID do intervalo (ADICIONADO)
 }
 
-// Função para parar o monitoramento (ADICIONADO - CÓPIA DO CÓDIGO MAIS RECENTE)
+// Função para parar o monitoramento (CÓPIA DO CÓDIGO MAIS RECENTE)
 function stopMonitoring() {
   console.log("Stopping monitoring after 60 minutes...");
   if (postMonitoringIntervalId) {
@@ -239,7 +239,7 @@ async function sendToWebhook(data) {
     console.error("Error sending to webhook:", error);
   }
 }
-// Limit the size of processedItems to prevent memory issues (MANTIDO DO SEU CÓDIGO)
+// Limit the size of processedItems to prevent memory issues
 function cleanupProcessedItems() {
   if (processedItems.size > 1000) {
     const itemsArray = Array.from(processedItems);
@@ -249,7 +249,7 @@ function cleanupProcessedItems() {
   }
 }
 
-// Função para configurar o agendamento diário (ADICIONADO - CÓPIA DO CÓDIGO MAIS RECENTE)
+// Função para configurar o agendamento diário
 function setupDailySchedule() {
   console.log("Setting up daily schedule with 60-minute runs...");
 
@@ -295,11 +295,11 @@ function setupDailySchedule() {
   console.log("Daily schedule setup with 60-minute runs complete.");
 }
 
-// Função para iniciar o monitoramento (MODIFICADO - USA setupDailySchedule)
+// Função para iniciar o monitoramento
 async function startMonitoring() {
   console.log("Monitoring service started...");
 
-  // Configurar o agendamento diário (ADICIONADO - CHAMA setupDailySchedule)
+  // Configurar o agendamento diário
   setupDailySchedule();
 
   console.log(
@@ -307,7 +307,7 @@ async function startMonitoring() {
   );
 }
 
-// Start the monitoring process (MANTIDO DO SEU CÓDIGO)
+// Start the monitoring process
 startMonitoring().catch((error) => {
   console.error("Error starting monitoring:", error);
 });
