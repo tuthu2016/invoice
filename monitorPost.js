@@ -185,7 +185,7 @@ function cleanupProcessedItems() {
   }
 }
 
-// Função para configurar o agendamento diário 
+// Função para configurar o agendamento diário
 function setupDailySchedule() {
   console.log("Setting up daily schedule with 60-minute runs...");
 
